@@ -1,0 +1,182 @@
+version: '3.9'
+
+services:
+  # ─── Infrastructure ────────────────────────────────────────────────────────
+  postgres-user-db:
+    image: postgres:15-alpine
+    container_name: postgres-user-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-user_secret}
+      POSTGRES_DB: ${POSTGRES_USER_DB:-user_db}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_user_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U user_admin -d user_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - board-exam-net
+
+  postgres-result-db:
+    image: postgres:15-alpine
+    container_name: postgres-result-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_RESULT_USER:-result_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_RESULT_PASSWORD:-result_secret}
+      POSTGRES_DB: ${POSTGRES_RESULT_DB:-result_db}
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_result_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U result_admin -d result_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - board-exam-net
+
+  mongodb:
+    image: mongo:7-jammy
+    container_name: mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-mongo_admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-mongo_secret}
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - board-exam-net
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbit_admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbit_secret}
+      RABBITMQ_ERLANG_COOKIE: "supersecretcookie"
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    tmpfs:
+      - /var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - board-exam-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - board-exam-net
+
+  # ─── Services ──────────────────────────────────────────────────────────────
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+      target: production
+    container_name: user-service
+    env_file:
+      - ./services/user-service/.env
+    environment:
+      DB_HOST: postgres-user-db
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-user_admin}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-user_secret}
+      DB_NAME: ${POSTGRES_USER_DB:-user_db}
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres-user-db:
+        condition: service_healthy
+    networks:
+      - board-exam-net
+    restart: unless-stopped
+
+  result-service:
+    build:
+      context: ./services/result-service
+      dockerfile: Dockerfile
+      target: production
+    container_name: result-service
+    env_file:
+      - ./services/result-service/.env
+    environment:
+      DB_HOST: postgres-result-db
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_RESULT_USER:-result_admin}
+      DB_PASSWORD: ${POSTGRES_RESULT_PASSWORD:-result_secret}
+      DB_NAME: ${POSTGRES_RESULT_DB:-result_db}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-rabbit_admin}:${RABBITMQ_PASSWORD:-rabbit_secret}@rabbitmq:5672
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      USER_SERVICE_URL: http://user-service:3001
+    ports:
+      - '3002:3002'
+    depends_on:
+      postgres-result-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - board-exam-net
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+      target: production
+    container_name: notification-service
+    env_file:
+      - ./services/notification-service/.env
+    environment:
+      MONGO_URI: mongodb://${MONGO_USER:-mongo_admin}:${MONGO_PASSWORD:-mongo_secret}@mongodb:27017/notification_db?authSource=admin
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-rabbit_admin}:${RABBITMQ_PASSWORD:-rabbit_secret}@rabbitmq:5672
+    ports:
+      - '3003:3003'
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - board-exam-net
+    restart: unless-stopped
+
+volumes:
+  postgres_user_data:
+  postgres_result_data:
+  mongo_data:
+  redis_data:
+
+networks:
+  board-exam-net:
+    driver: bridge
