@@ -102,7 +102,7 @@ services:
       target: production
     container_name: user-service
     env_file:
-      - ./services/user-service/.env
+      - ./services/user-service/.env.example
     environment:
       DB_HOST: postgres-user-db
       DB_PORT: 5432
@@ -125,7 +125,7 @@ services:
       target: production
     container_name: result-service
     env_file:
-      - ./services/result-service/.env
+      - ./services/result-service/.env.example
     environment:
       DB_HOST: postgres-result-db
       DB_PORT: 5432
@@ -156,7 +156,7 @@ services:
       target: production
     container_name: notification-service
     env_file:
-      - ./services/notification-service/.env
+      - ./services/notification-service/.env.example
     environment:
       MONGO_URI: mongodb://${MONGO_USER:-mongo_admin}:${MONGO_PASSWORD:-mongo_secret}@mongodb:27017/notification_db?authSource=admin
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-rabbit_admin}:${RABBITMQ_PASSWORD:-rabbit_secret}@rabbitmq:5672
