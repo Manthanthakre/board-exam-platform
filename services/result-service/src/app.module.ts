@@ -32,7 +32,7 @@ import { typeOrmConfig } from './config/typeorm.config';
     CacheModule.registerAsync({
       isGlobal: true,
       inject: [ConfigService],
-      useFactory: (_cs: ConfigService) => ({
+      useFactory: () => ({
         ttl: 300000,
         store: 'memory',
       }),
