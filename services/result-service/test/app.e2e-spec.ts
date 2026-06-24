@@ -10,8 +10,7 @@ describe('Result Service (e2e)', () => {
   let app: INestApplication;
   // These tokens would be obtained from User Service in a real test environment
   const moderatorToken = process.env['TEST_MODERATOR_TOKEN'] ?? 'mock-moderator-token';
-  const studentToken = process.env['TEST_STUDENT_TOKEN'] ?? 'mock-student-token';
-  let createdResultId: string;
+ 
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
